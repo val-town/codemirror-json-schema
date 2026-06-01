@@ -1,3 +1,11 @@
+🍽️ Changes
+
+- Removed markdown-it and shiki dependencies, allowing users to plug in their own renderMarkdown method
+- Removed `@sagold/json-pointer` dependency (unused)
+- Removed unused exports and functions
+
+---
+
 Codemirror 6 extensions that provide full [JSON Schema](https://json-schema.org/) support for `@codemirror/lang-json` & `codemirror-json5` language modes
 
 <a href="https://npmjs.com/codemirror-json-schema">
@@ -197,7 +205,7 @@ const json5State = EditorState.create({
     linter(
       json5SchemaLinter({
         needsRefresh: handleRefresh,
-      })
+      }),
     ),
     hoverTooltip(json5SchemaHover()),
     json5Language.data.of({

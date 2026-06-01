@@ -8,7 +8,7 @@ import { resolveTokenName } from "./json-pointers";
 export const getNodeAtPosition = (
   state: EditorState,
   pos: number,
-  side: Side = -1
+  side: Side = -1,
 ) => {
   return syntaxTree(state).resolveInner(pos, side);
 };
@@ -24,7 +24,7 @@ export const getWord = (
   doc: Text,
   node: SyntaxNode | null,
   stripQuotes = true,
-  onlyEvenQuotes = true
+  onlyEvenQuotes = true,
 ) => {
   const word = node ? doc.sliceString(node.from, node.to) : "";
   if (!stripQuotes) {
@@ -36,7 +36,7 @@ export const getWord = (
   return word.replace(/(^["'])|(["']$)/g, "");
 };
 
-export const isInvalidValueNode = (node: SyntaxNode, mode: JSONMode) => {
+const isInvalidValueNode = (node: SyntaxNode, mode: JSONMode) => {
   return (
     resolveTokenName(node.name, mode) === TOKENS.INVALID &&
     (resolveTokenName(node.prevSibling?.name ?? "", mode) ===
@@ -56,7 +56,7 @@ export const isPrimitiveValueNode = (node: SyntaxNode, mode: JSONMode) => {
 export const isValueNode = (node: SyntaxNode, mode: JSONMode) => {
   return (
     [...PRIMITIVE_TYPES, ...COMPLEX_TYPES].includes(
-      resolveTokenName(node.name, mode) as any
+      resolveTokenName(node.name, mode) as any,
     ) || isInvalidValueNode(node, mode)
   );
 };
@@ -90,21 +90,21 @@ export const getChildrenNodes = (node: SyntaxNode) => {
 export const getMatchingChildrenNodes = (
   node: SyntaxNode,
   nodeName: string,
-  mode: JSONMode
+  mode: JSONMode,
 ) => {
   return getChildrenNodes(node).filter(
-    (n) => resolveTokenName(n.name, mode) === nodeName
+    (n) => resolveTokenName(n.name, mode) === nodeName,
   );
 };
 
 export const getMatchingChildNode = (
   node: SyntaxNode,
   nodeName: string,
-  mode: JSONMode
+  mode: JSONMode,
 ) => {
   return (
     getChildrenNodes(node).find(
-      (n) => resolveTokenName(n.name, mode) === nodeName
+      (n) => resolveTokenName(n.name, mode) === nodeName,
     ) ?? null
   );
 };
@@ -117,16 +117,16 @@ const getArrayNodeChildren = (node: SyntaxNode, mode: JSONMode) => {
   return getChildrenNodes(node).filter(
     (n) =>
       PRIMITIVE_TYPES.includes(resolveTokenName(n.name, mode) as any) ||
-      COMPLEX_TYPES.includes(resolveTokenName(n.name, mode) as any)
+      COMPLEX_TYPES.includes(resolveTokenName(n.name, mode) as any),
   );
 };
 export const findNodeIndexInArrayNode = (
   arrayNode: SyntaxNode,
   valueNode: SyntaxNode,
-  mode: JSONMode
+  mode: JSONMode,
 ) => {
   return getArrayNodeChildren(arrayNode, mode).findIndex(
-    (nd) => nd.from === valueNode.from && nd.to === valueNode.to
+    (nd) => nd.from === valueNode.from && nd.to === valueNode.to,
   );
 };
 
@@ -134,7 +134,7 @@ export const getClosestNode = (
   node: SyntaxNode,
   nodeName: string,
   mode: JSONMode,
-  depth = Infinity
+  depth = Infinity,
 ) => {
   let n: SyntaxNode | null = node;
   while (n && depth > 0) {

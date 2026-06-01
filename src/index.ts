@@ -31,3 +31,5 @@ export * from "./parsers/json-parser";
 export * from "./utils/json-pointers";
 
 export * from "./features/state";
+
+export type { MarkdownRenderer } from "./utils/markdown";
