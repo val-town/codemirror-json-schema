@@ -126,5 +126,8 @@
   },
   "nano-staged": {
     "*.{js,ts,jsx,tsx,json,css,html,yml,mdx,md}": "prettier --write"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
