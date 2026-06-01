@@ -13,7 +13,10 @@ import { JSONMode, Side } from "../types";
 import { el } from "../utils/dom";
 import { getJSONSchema } from "./state";
 import { MODES } from "../constants";
-import { renderMarkdown } from "../utils/markdown";
+import {
+  type MarkdownRenderer,
+  defaultMarkdownRenderer,
+} from "../utils/markdown";
 import { JSONSchema7Type } from "json-schema";
 
 export type CursorData = { schema?: JsonSchema; pointer: string };
@@ -37,6 +40,11 @@ export type HoverOptions = {
    * @default JSON.parse
    */
   parser?: (text: string) => any;
+  /**
+   * Render markdown strings to HTML.
+   * By default, returns the input string as-is.
+   */
+  renderMarkdown?: MarkdownRenderer;
 };
 
 /**
@@ -65,7 +73,7 @@ function formatType(data: { type?: JSONSchema7Type; $ref?: string }) {
 function formatComplexType(
   schema: JsonSchema,
   complexType: "oneOf" | "anyOf" | "allOf",
-  draft: Draft
+  draft: Draft,
 ) {
   return `${complexType}: ${joinWithOr(
     schema[complexType].map((s: JsonSchema) => {
@@ -78,24 +86,26 @@ function formatComplexType(
       } catch (err) {
         return s.type;
       }
-    })
+    }),
   )}`;
 }
 
 export class JSONHover {
   private schema: Draft | null = null;
   private mode: JSONMode = MODES.JSON;
+  private renderMarkdown: MarkdownRenderer;
   public constructor(private opts?: HoverOptions) {
     this.opts = {
       parser: JSON.parse,
       ...this.opts,
     };
     this.mode = this.opts?.mode ?? MODES.JSON;
+    this.renderMarkdown = this.opts?.renderMarkdown ?? defaultMarkdownRenderer;
   }
   public getDataForCursor(
     view: EditorView,
     pos: number,
-    side: Side
+    side: Side,
   ): CursorData | null {
     const schema = getJSONSchema(view.state)!;
     if (!schema) {
@@ -139,12 +149,12 @@ export class JSONHover {
       return el("div", { class: "cm6-json-schema-hover" }, [
         el("div", {
           class: "cm6-json-schema-hover--description",
-          inner: renderMarkdown(message, false),
+          inner: this.renderMarkdown(message),
         }),
         el("div", { class: "cm6-json-schema-hover--code-wrapper" }, [
           el("div", {
             class: "cm6-json-schema-hover--code",
-            inner: renderMarkdown(typeInfo, false),
+            inner: this.renderMarkdown(typeInfo),
           }),
         ]),
       ]);
@@ -153,7 +163,7 @@ export class JSONHover {
       el("div", { class: "cm6-json-schema-hover--code-wrapper" }, [
         el("code", {
           class: "cm6-json-schema-hover--code",
-          inner: renderMarkdown(typeInfo, false),
+          inner: this.renderMarkdown(typeInfo),
         }),
       ]),
     ]);
@@ -203,7 +213,7 @@ export class JSONHover {
   public async doHover(
     view: EditorView,
     pos: number,
-    side: Side
+    side: Side,
   ): Promise<Tooltip | null> {
     const start = pos,
       end = pos;
@@ -216,7 +226,7 @@ export class JSONHover {
       const getHoverTexts = this.opts?.getHoverTexts ?? this.getHoverTexts;
       const hoverTexts = getHoverTexts(
         cursorData as FoundCursorData,
-        this.schema!
+        this.schema!,
       );
       // allow users to override the hover
       const formatter = this.opts?.formatHover ?? this.formatMessage;

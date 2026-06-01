@@ -1,4 +1,4 @@
-export function getRecordEntries<K extends keyof any, V>(
+function getRecordEntries<K extends keyof any, V>(
   record: Record<K, V>,
 ): [K, V][] {
   return Object.entries(record) as unknown as [K, V][];
@@ -75,17 +75,4 @@ export function replacePropertiesDeeply<T>(
     }
   }
   return newObject;
-}
-
-export function removeUndefinedValuesOnRecord<K extends keyof any, V>(
-  record: Record<K, V | undefined>,
-): Record<K, V> {
-  const newRecord = {} as Record<K, V>;
-  for (const [key, value] of getRecordEntries(record)) {
-    if (value === undefined) {
-      continue;
-    }
-    newRecord[key] = value;
-  }
-  return newRecord;
 }

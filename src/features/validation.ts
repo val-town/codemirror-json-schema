@@ -6,7 +6,10 @@ import { getJSONSchema, schemaStateField } from "./state";
 import { joinWithOr } from "../utils/formatting";
 import { JSONMode, JSONPointerData, RequiredPick } from "../types";
 import { el } from "../utils/dom";
-import { renderMarkdown } from "../utils/markdown";
+import {
+  type MarkdownRenderer,
+  defaultMarkdownRenderer,
+} from "../utils/markdown";
 import { MODES } from "../constants";
 import { debug } from "../utils/debug";
 import { DocumentParser, getDefaultParser } from "../parsers";
@@ -29,6 +32,11 @@ export interface JSONValidationOptions {
   mode?: JSONMode;
   formatError?: (error: JsonError) => string;
   jsonParser?: DocumentParser;
+  /**
+   * Render markdown strings to HTML.
+   * By default, returns the input string as-is.
+   */
+  renderMarkdown?: MarkdownRenderer;
 }
 
 type JSONValidationSettings = RequiredPick<JSONValidationOptions, "jsonParser">;
@@ -64,9 +72,12 @@ export class JSONValidation {
 
   private mode: JSONMode = MODES.JSON;
   private parser: DocumentParser;
+  private renderMarkdown: MarkdownRenderer;
   public constructor(private options?: JSONValidationOptions) {
     this.mode = this.options?.mode ?? MODES.JSON;
     this.parser = this.options?.jsonParser ?? getDefaultParser(this.mode);
+    this.renderMarkdown =
+      this.options?.renderMarkdown ?? defaultMarkdownRenderer;
 
     // TODO: support other versions of json schema.
     // most standard schemas are draft 4 for some reason, probably
@@ -140,7 +151,7 @@ export class JSONValidation {
           source: this.schemaTitle,
           renderMessage: () => {
             const dom = el("div", {});
-            dom.innerHTML = renderMarkdown(errorString);
+            dom.innerHTML = this.renderMarkdown(errorString);
             return dom;
           },
         });
@@ -167,7 +178,7 @@ export class JSONValidation {
             message: errorString,
             renderMessage: () => {
               const dom = el("div", {});
-              dom.innerHTML = renderMarkdown(errorString);
+              dom.innerHTML = this.renderMarkdown(errorString);
               return dom;
             },
             severity: "error",

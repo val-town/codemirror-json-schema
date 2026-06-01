@@ -32,7 +32,10 @@ import {
 import { MODES, TOKENS } from "../constants";
 import { JSONMode } from "../types";
 import { el } from "../utils/dom";
-import { renderMarkdown } from "../utils/markdown";
+import {
+  type MarkdownRenderer,
+  defaultMarkdownRenderer,
+} from "../utils/markdown";
 import { DocumentParser, getDefaultParser } from "../parsers";
 import { replacePropertiesDeeply } from "../utils/recordUtil";
 
@@ -55,6 +58,11 @@ class CompletionCollector {
 export interface JSONCompletionOptions {
   mode?: JSONMode;
   jsonParser?: DocumentParser;
+  /**
+   * Render markdown strings to HTML.
+   * By default, returns the input string as-is.
+   */
+  renderMarkdown?: MarkdownRenderer;
 }
 
 function isRealSchema(
@@ -81,12 +89,14 @@ export class JSONCompletion {
   private laxSchema: JSONSchema7 | null = null;
   private mode: JSONMode = MODES.JSON;
   private parser: DocumentParser;
+  private renderMarkdown: MarkdownRenderer;
 
   // private lastKnownValidData: object | null = null;
 
   constructor(private opts: JSONCompletionOptions) {
     this.mode = opts.mode ?? MODES.JSON;
     this.parser = this.opts?.jsonParser ?? getDefaultParser(this.mode);
+    this.renderMarkdown = this.opts?.renderMarkdown ?? defaultMarkdownRenderer;
   }
 
   public doComplete(ctx: CompletionContext) {
@@ -362,7 +372,7 @@ export class JSONCompletion {
               detail: typeStr,
               info: () =>
                 el("div", {
-                  inner: renderMarkdown(description),
+                  inner: this.renderMarkdown(description),
                 }),
             };
             collector.add(this.applySnippetCompletion(completion));
