@@ -183,10 +183,10 @@ describe("JSONHover#doHover", () => {
       },
       expectedHTMLContents: [
         `cm6-json-schema-hover--description`,
-        `<p>an elegant string</p>`,
+        `an elegant string`,
         `cm6-json-schema-hover--code-wrapper`,
         `cm6-json-schema-hover--code`,
-        `<p>string</p></div>`,
+        `string`,
       ],
     },
     {

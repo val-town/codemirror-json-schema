@@ -93,7 +93,7 @@ bar: 123
       });
       const pointer = jsonPointerForPosition(state, pos, 1, mode);
       expect(pointer).toEqual(expected);
-    }
+    },
   );
 });
 
@@ -135,9 +135,6 @@ describe("getJsonPointers", () => {
         "/boop/0": {
           keyFrom: 65,
           keyTo: 78,
-          // TODO: These look erroneous. There is no key-value pair for array items
-          valueFrom: 78,
-          valueTo: 79,
         },
         "/boop/0/foo": {
           keyFrom: 66,
@@ -286,6 +283,6 @@ boop:
       });
       const pointers = getJsonPointers(state, mode);
       expect(Object.fromEntries(pointers.entries())).toEqual(expected);
-    }
+    },
   );
 });
