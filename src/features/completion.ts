@@ -23,8 +23,8 @@ import {
   surroundingDoubleQuotesToSingle,
 } from "../utils/node";
 import { getJSONSchema } from "./state";
-import type { JsonError, JsonSchema } from "json-schema-library";
-import { Draft07, isJsonError } from "json-schema-library";
+import type { JsonError, JsonSchema, SchemaNode } from "json-schema-library";
+import { compileSchema, isJsonError } from "json-schema-library";
 import {
   jsonPointerForPosition,
   resolveTokenName,
@@ -74,6 +74,18 @@ function isRealSchema(
     subSchema.name === "UnknownPropertyError" ||
     subSchema.type === "undefined"
   );
+}
+
+function getSchemaAtPointer(
+  rootNode: SchemaNode,
+  pointer: string | undefined,
+  data: unknown,
+): JSONSchema7 | undefined {
+  const { node, error } = rootNode.getNode(pointer ?? "", data);
+  if (node) {
+    return node.schema as JSONSchema7;
+  }
+  return error?.data?.schema as JSONSchema7 | undefined;
 }
 
 export class JSONCompletion {
@@ -901,7 +913,7 @@ export class JSONCompletion {
   ): JSONSchema7Definition[] {
     const { data: documentData } = this.parser(ctx.state);
 
-    const draft = new Draft07(rootSchema);
+    const rootNode = compileSchema(rootSchema, { draft: "draft-07" });
     let pointer: string | undefined = jsonPointerForPosition(
       ctx.state,
       ctx.pos,
@@ -943,10 +955,11 @@ export class JSONCompletion {
       deepestPropertyKey in (effectiveSchemaOfParent?.properties ?? {});
 
     // TODO upgrade json-schema-library, so this actually returns undefined if data and schema are incompatible (currently it sometimes pukes itself with invalid data and imagines schemas on-the-fly)
-    let subSchema = draft.getSchema({
+    let subSchema = getSchemaAtPointer(
+      rootNode,
       pointer,
-      data: documentData ?? undefined,
-    });
+      documentData ?? undefined,
+    );
     if (
       !pointerPointsToKnownProperty &&
       subSchema?.type === "null" &&
@@ -967,10 +980,6 @@ export class JSONCompletion {
       "pointerPointsToKnownProperty",
       pointerPointsToKnownProperty,
     );
-    if (isJsonError(subSchema)) {
-      subSchema = subSchema.data?.schema;
-    }
-
     // if we don't have a schema for the current pointer, try the parent pointer with data to get a list of possible properties
     if (!isRealSchema(subSchema)) {
       if (effectiveSchemaOfParent) {
@@ -980,7 +989,7 @@ export class JSONCompletion {
 
     // then try the parent pointer without data
     if (!isRealSchema(subSchema)) {
-      subSchema = draft.getSchema({ pointer: parentPointer });
+      subSchema = getSchemaAtPointer(rootNode, parentPointer, undefined);
       // TODO should probably only change pointer if it actually found a schema there, but i left it as-is
       pointer = parentPointer;
     }
@@ -1120,42 +1129,61 @@ function getEffectiveObjectWithPropertiesSchema(
   data: unknown,
   pointer: string | undefined,
 ): JSONSchema7 | undefined {
-  // TODO (unimportant): [performance] cache Draft07 in case it does some pre-processing? but does not seem to be significant
-  const draft = new Draft07(schema);
-  const subSchema = draft.getSchema({
-    pointer,
-    data: data ?? undefined,
-  });
+  // TODO (unimportant): [performance] cache compiled schema in case it does some pre-processing? but does not seem to be significant
+  const rootNode = compileSchema(schema, { draft: "draft-07" });
+  const subSchema = getSchemaAtPointer(rootNode, pointer, data ?? undefined);
   if (!isRealSchema(subSchema)) {
     return undefined;
   }
 
-  const possibleDirectPropertyNames = getAllPossibleDirectStaticPropertyNames(
-    draft,
+  const possibleDirectProperties = getAllPossibleDirectStaticProperties(
+    schema,
     subSchema as JSONSchema7,
   );
   const effectiveProperties: Exclude<JSONSchema7["properties"], undefined> = {};
-  for (let possibleDirectPropertyName of possibleDirectPropertyNames) {
-    let propertyPointer = extendJsonPointer(
+  for (const possibleDirectPropertyName of Object.keys(
+    possibleDirectProperties,
+  )) {
+    const propertyPointer = extendJsonPointer(
       pointer,
       possibleDirectPropertyName,
     );
-    const subSchemaForPropertyConsideringData = draft.getSchema({
-      // TODO [performance] use subSchema and only check it's sub-properties
-      pointer: propertyPointer,
-      data: data ?? undefined,
-      // pointer: `/${possibleDirectPropertyName}`,
-      // schema: subSchema
-    });
-    if (isRealSchema(subSchemaForPropertyConsideringData)) {
+    // TODO [performance] use subSchema and only check it's sub-properties
+    const { node: propertyNode, error: propertyError } = rootNode.getNode(
+      propertyPointer,
+      data ?? undefined,
+    );
+    if (propertyNode) {
       Object.assign(effectiveProperties, {
-        [possibleDirectPropertyName]: subSchemaForPropertyConsideringData,
+        [possibleDirectPropertyName]: propertyNode.schema,
+      });
+    } else if (propertyError?.data?.schema === subSchema) {
+      // json-schema-library can't reduce a oneOf/anyOf against the given
+      // data (e.g. while a document is mid-edit) and falls back to returning
+      // the (still unresolved) parent schema unchanged; fall back to the
+      // statically known property schema instead of dropping it
+      const staticPropertySchema =
+        possibleDirectProperties[possibleDirectPropertyName];
+      if (typeof staticPropertySchema === "object" && staticPropertySchema) {
+        Object.assign(effectiveProperties, {
+          [possibleDirectPropertyName]: expandSchemaProperty(
+            staticPropertySchema,
+            schema,
+          ),
+        });
+      }
+    } else if (isRealSchema(propertyError?.data?.schema)) {
+      Object.assign(effectiveProperties, {
+        [possibleDirectPropertyName]: propertyError?.data?.schema,
       });
     }
+    // else: neither a node nor a usable error schema was found, meaning this
+    // property genuinely doesn't apply given the current data (e.g. an
+    // if/then branch that isn't active) - correctly excluded
   }
 
   if (
-    possibleDirectPropertyNames.length === 0 ||
+    Object.keys(possibleDirectProperties).length === 0 ||
     Object.keys(effectiveProperties).length === 0
   ) {
     // in case json-schema-library behaves too weirdly and returns nothing, just return no schema too to let other cases handle this edge-case
@@ -1173,31 +1201,32 @@ function getEffectiveObjectWithPropertiesSchema(
 
 /**
  * static means not from patternProperties
- * @param rootDraft
+ * @param rootSchema
  * @param schema
  */
-function getAllPossibleDirectStaticPropertyNames(
-  rootDraft: Draft07,
+function getAllPossibleDirectStaticProperties(
+  rootSchema: JSONSchema7,
   schema: JSONSchema7,
-): string[] {
-  schema = expandSchemaProperty(schema, rootDraft.rootSchema);
+): Record<string, JSONSchema7Definition> {
+  schema = expandSchemaProperty(schema, rootSchema);
   if (typeof schema !== "object" || schema == null) {
-    return [];
+    return {};
   }
 
-  const possiblePropertyNames = [];
+  const possibleProperties: Record<string, JSONSchema7Definition> = {};
 
   function addFrom(subSchema: JSONSchema7) {
-    const possiblePropertyNamesOfSubSchema =
-      getAllPossibleDirectStaticPropertyNames(rootDraft, subSchema);
-    possiblePropertyNames.push(...possiblePropertyNamesOfSubSchema);
+    Object.assign(
+      possibleProperties,
+      getAllPossibleDirectStaticProperties(rootSchema, subSchema),
+    );
   }
 
   if (typeof schema.properties === "object" && schema.properties != null) {
-    possiblePropertyNames.push(...Object.keys(schema.properties));
+    Object.assign(possibleProperties, schema.properties);
   }
   if (typeof schema.then === "object" && schema.then != null) {
-    addFrom(schema.then);
+    addFrom(schema.then as JSONSchema7);
   }
   if (Array.isArray(schema.allOf)) {
     for (const subSchema of schema.allOf) {
@@ -1214,7 +1243,7 @@ function getAllPossibleDirectStaticPropertyNames(
       addFrom(subSchema as JSONSchema7);
     }
   }
-  return possiblePropertyNames;
+  return possibleProperties;
 }
 
 function expandSchemaProperty<T extends JSONSchema7Definition>(

@@ -1,9 +1,8 @@
 import { type EditorView, Tooltip } from "@codemirror/view";
 import {
-  type Draft,
-  Draft04,
+  type SchemaNode,
   JsonSchema,
-  isJsonError,
+  compileSchema,
 } from "json-schema-library";
 
 import { jsonPointerForPosition } from "../utils/json-pointers";
@@ -73,14 +72,16 @@ function formatType(data: { type?: JSONSchema7Type; $ref?: string }) {
 function formatComplexType(
   schema: JsonSchema,
   complexType: "oneOf" | "anyOf" | "allOf",
-  draft: Draft,
+  rootNode: SchemaNode,
 ) {
   return `${complexType}: ${joinWithOr(
     schema[complexType].map((s: JsonSchema) => {
       try {
-        const { data } = draft.resolveRef({ data: s, pointer: s.$ref });
-        if (data) {
-          return formatType(data);
+        if (s.$ref) {
+          const refNode = rootNode.getNodeRef(s.$ref);
+          if (refNode) {
+            return formatType(refNode.schema);
+          }
         }
         return formatType(s);
       } catch (err) {
@@ -91,7 +92,7 @@ function formatComplexType(
 }
 
 export class JSONHover {
-  private schema: Draft | null = null;
+  private schema: SchemaNode | null = null;
   private mode: JSONMode = MODES.JSON;
   private renderMarkdown: MarkdownRenderer;
   public constructor(private opts?: HoverOptions) {
@@ -113,7 +114,8 @@ export class JSONHover {
       // without taking over the existing mode responsibilties?
       return null;
     }
-    this.schema = new Draft04(schema);
+    const rootNode = compileSchema(schema, { draft: "draft-04" });
+    this.schema = rootNode;
 
     const pointer = jsonPointerForPosition(view.state, pos, side, this.mode);
 
@@ -127,23 +129,25 @@ export class JSONHover {
       return null;
     }
     // if the data is valid, we can infer a type for complex types
-    let subSchema = this.schema.getSchema({
-      pointer,
-      data,
+    const { node, error } = rootNode.getNode(pointer, data, {
       withSchemaWarning: true,
     });
-    if (isJsonError(subSchema)) {
-      if (subSchema?.data.schema["$ref"]) {
-        subSchema = this.schema.resolveRef(subSchema);
+    let subSchema: JsonSchema | undefined;
+    if (node) {
+      subSchema = node.schema;
+    } else if (error) {
+      const errorSchema = error.data?.schema;
+      if (errorSchema?.["$ref"]) {
+        subSchema = rootNode.getNodeRef(errorSchema["$ref"])?.schema;
       } else {
-        subSchema = subSchema?.data.schema;
+        subSchema = errorSchema;
       }
     }
 
     return { schema: subSchema, pointer };
   }
 
-  private formatMessage(texts: HoverTexts): HTMLElement {
+  private formatMessage = (texts: HoverTexts): HTMLElement => {
     const { message, typeInfo } = texts;
     if (message) {
       return el("div", { class: "cm6-json-schema-hover" }, [
@@ -167,22 +171,25 @@ export class JSONHover {
         }),
       ]),
     ]);
-  }
+  };
 
-  public getHoverTexts(data: FoundCursorData, draft: Draft): HoverTexts {
+  public getHoverTexts(
+    data: FoundCursorData,
+    rootNode: SchemaNode,
+  ): HoverTexts {
     let typeInfo = "";
     let message = null;
 
     const { schema } = data;
 
     if (schema.oneOf) {
-      typeInfo = formatComplexType(schema, "oneOf", draft);
+      typeInfo = formatComplexType(schema, "oneOf", rootNode);
     }
     if (schema.anyOf) {
-      typeInfo = formatComplexType(schema, "anyOf", draft);
+      typeInfo = formatComplexType(schema, "anyOf", rootNode);
     }
     if (schema.allOf) {
-      typeInfo = formatComplexType(schema, "allOf", draft);
+      typeInfo = formatComplexType(schema, "allOf", rootNode);
     }
 
     if (schema.type) {

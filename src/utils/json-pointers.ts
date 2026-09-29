@@ -94,24 +94,25 @@ export const getJsonPointers = (
   const pointers: JSONPointersMap = new Map();
   tree.iterate({
     enter: (type: SyntaxNodeRef) => {
-      if (
-        [TOKENS.PROPERTY_NAME, TOKENS.OBJECT].includes(
-          resolveTokenName(type.name, mode) as any,
-        )
-      ) {
+      const resolvedName = resolveTokenName(type.name, mode);
+      if ([TOKENS.PROPERTY_NAME, TOKENS.OBJECT].includes(resolvedName as any)) {
         const pointer = getJsonPointerAt(state.doc, type.node, mode);
 
-        const { from: keyFrom, to: keyTo } = type.node;
+        const { to: keyTo } = type.node;
+        // YAML's BlockMapping nodes include the leading newline/indent
+        // before their first pair in their own range; use the first
+        // child's start instead so the range matches the visible key text
+        const keyFrom =
+          resolvedName === TOKENS.OBJECT
+            ? (type.node.firstChild?.from ?? type.node.from)
+            : type.node.from;
         // if there's no value, we can't get the valueFrom/to
         if (!type.node?.nextSibling?.node) {
           pointers.set(pointer, { keyFrom, keyTo });
           return true;
         }
-        // TODO: Make this generic enough to avoid mode-specific checks
-        const nextNode =
-          mode === MODES.JSON
-            ? type.node?.nextSibling?.node
-            : type.node?.nextSibling?.node?.nextSibling?.node;
+        // skip the colon token between the property name and its value
+        const nextNode = type.node?.nextSibling?.node?.nextSibling?.node;
         if (!nextNode) {
           pointers.set(pointer, { keyFrom, keyTo });
           return true;
