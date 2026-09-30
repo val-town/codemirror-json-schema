@@ -58,7 +58,7 @@
       "default": "./cjs/yaml/index.js"
     }
   },
-  "repository": "github:acao/codemirror-json-schema",
+  "repository": "github:val-town/codemirror-json-schema",
   "homepage": "https://codemirror-json-schema.netlify.app/",
   "dependencies": {
     "best-effort-json-parser": "^1.5.1",
