@@ -1,5 +1,15 @@
 # codemirror-json-schema
 
+## 1.0.0
+
+### Major Changes
+
+- [`b496e92`](https://github.com/jsonnext/codemirror-json-schema/commit/b496e925f528a9a581a50c98b6bb3fa85f4f5216) Thanks [@tmcw](https://github.com/tmcw)! - Upgrade json-schema module, upgrade everything else
+
+### Patch Changes
+
+- [`3952c82`](https://github.com/jsonnext/codemirror-json-schema/commit/3952c823bedda1d4516121d3c150bd15387a88cf) Thanks [@tmcw](https://github.com/tmcw)! - Drop typedoc dependency
+
 ## 0.8.1
 
 ### Patch Changes
