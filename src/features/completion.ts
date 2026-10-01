@@ -88,6 +88,21 @@ function getSchemaAtPointer(
   return error?.data?.schema as JSONSchema7 | undefined;
 }
 
+// compileSchema walks the entire schema tree, which is expensive for large
+// schemas (e.g. SchemaStore's tsconfig.json). Cache the compiled node per
+// schema identity so repeated completion requests against the same
+// (unchanged) schema don't repeat that work.
+const compiledSchemaCache = new WeakMap<JSONSchema7, SchemaNode>();
+
+function getCompiledSchema(schema: JSONSchema7): SchemaNode {
+  let rootNode = compiledSchemaCache.get(schema);
+  if (!rootNode) {
+    rootNode = compileSchema(schema, { draft: "draft-07" });
+    compiledSchemaCache.set(schema, rootNode);
+  }
+  return rootNode;
+}
+
 export class JSONCompletion {
   private originalSchema: JSONSchema7 | null = null;
   /**
@@ -913,7 +928,7 @@ export class JSONCompletion {
   ): JSONSchema7Definition[] {
     const { data: documentData } = this.parser(ctx.state);
 
-    const rootNode = compileSchema(rootSchema, { draft: "draft-07" });
+    const rootNode = getCompiledSchema(rootSchema);
     let pointer: string | undefined = jsonPointerForPosition(
       ctx.state,
       ctx.pos,
@@ -930,6 +945,7 @@ export class JSONCompletion {
 
       // when adding a new property, we just wanna return the possible properties if possible
       const effectiveSchemaOfPointer = getEffectiveObjectWithPropertiesSchema(
+        rootNode,
         rootSchema,
         documentData,
         pointer,
@@ -945,6 +961,7 @@ export class JSONCompletion {
 
     // Pass parsed data to getSchema to get the correct schema based on the data context (e.g. for anyOf or if-then)
     const effectiveSchemaOfParent = getEffectiveObjectWithPropertiesSchema(
+      rootNode,
       rootSchema,
       documentData,
       parentPointer,
@@ -1120,17 +1137,17 @@ function makeSchemaLax(schema: any): any {
 /**
  * determines effective object schema for given data
  * TODO support patternProperties, etc.
+ * @param rootNode schema precompiled via getCompiledSchema(schema)
  * @param schema
  * @param data
  * @param pointer
  */
 function getEffectiveObjectWithPropertiesSchema(
+  rootNode: SchemaNode,
   schema: JSONSchema7,
   data: unknown,
   pointer: string | undefined,
 ): JSONSchema7 | undefined {
-  // TODO (unimportant): [performance] cache compiled schema in case it does some pre-processing? but does not seem to be significant
-  const rootNode = compileSchema(schema, { draft: "draft-07" });
   const subSchema = getSchemaAtPointer(rootNode, pointer, data ?? undefined);
   if (!isRealSchema(subSchema)) {
     return undefined;
